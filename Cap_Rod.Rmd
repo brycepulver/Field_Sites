@@ -1,0 +1,32 @@
+---
+title: "Cap Rod"
+author: "Bryce Pulver"
+date: "9/25/2019"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+library(tidyverse)
+library(tidyr)
+library(ggthemes)
+library(lubridate)
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+#Reading in the data from the raw csv files
+```{r data_read_in}
+#Raw data files read in individualy
+files <- list.files(path="Dry_Creek/Cap rod/Raw_data",full.names = T,pattern = "*.CSV")%>%
+  lapply(read.csv)
+#Merging all CSV files into one large matrix
+mergefiles <- rbind(files)
+
+?rbind
+```
+
+```{r}
+
+```
+
