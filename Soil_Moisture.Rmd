@@ -1,0 +1,26 @@
+---
+title: "Soil Moisture"
+author: "Bryce Pulver"
+date: "September 26, 2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+library(plyr)
+library(tidyverse)
+library(tidyr)
+library(ggthemes)
+library(lubridate)
+library(readxl)
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r data_read_in}
+#Raw data files read in individualy and then merged as read in by 'ldply'
+SM_files <- list.files(path="Dry_Creek/Soil_moisture",full.names = T,pattern = "*.xls")%>%
+    sapply(read_excel, simplify=FALSE) %>% 
+    bind_rows(.id = "id")
+
+
+```
+

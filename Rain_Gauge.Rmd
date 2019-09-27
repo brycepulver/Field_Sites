@@ -1,0 +1,35 @@
+---
+title: "Rain_Gauge"
+author: "Bryce Pulver"
+date: "September 26, 2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+library(plyr)
+library(tidyverse)
+library(tidyr)
+library(ggthemes)
+library(lubridate)
+library(readr)
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+#Raw data files read in individualy and then merged as read in by 'ldply'
+RG_files <- list.files(path="Dry_Creek/Rain_gage/csv",pattern = "*.csv") 
+RG_read <-  sapply(read.csv(RG_files,skip = 1), simplify=FALSE) 
+    bind_rows(.id = "id")
+
+f <- file.choose()
+d <- read.csv(f,skip = 1)
+s <- file.choose()
+a <- read.csv(s,skip = 1)
+  RG_read <- read.csv(RG_files,header=F,skip=1,quote="\"")
+?read.csv
+?nchar
+?
+
+```
+
+

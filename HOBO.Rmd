@@ -1,0 +1,21 @@
+---
+title: "HOBO"
+author: "Bryce Pulver"
+date: "September 26, 2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+library(plyr)
+library(tidyverse)
+library(tidyr)
+library(ggthemes)
+library(lubridate)
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+CR_files <- list.files(path="Dry_Creek/Cap rod/Raw_data",full.names = T,pattern = "*.CSV")%>%
+  ldply(read.csv)%>%
+```
+

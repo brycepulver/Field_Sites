@@ -1,0 +1,42 @@
+---
+title: "PT Sensor"
+author: "Bryce Pulver"
+date: "September 25, 2019"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+library(plyr)
+library(tidyverse)
+library(tidyr)
+library(ggthemes)
+library(lubridate)
+library(data.table)
+knitr::opts_chunk$set(echo = TRUE)
+```
+#Reading in 
+```{r readingbaro}
+#Raw data files read in individualy and then merged into df by 'ldply'
+#function(x) is determening how many lines of the csv to skip and then
+#reading in the file with the associated # of skips
+baro_files <- lapply(list.files(path="Dry_Creek/PT_data/baro",full.names = T,pattern = "*.csv"),readLines)%>%
+  ldply(function(x) {
+  linesToSkip <- grep("Date and Time,Seconds", x)-1
+  read.csv(text = x, skip = linesToSkip, header=T)
+  }) 
+
+
+  
+
+```
+
+```{r readingstream}
+stream_files <- lapply(list.files(path="Dry_Creek/PT_data/stream",full.names = T,pattern = "*.csv"),readLines)%>%
+  ldply(function(x) {
+  linesToSkip <- grep("Date and Time,Seconds", x)-1
+  read.csv(text = x, skip = linesToSkip, header=T)
+  }) 
+```
+

@@ -8,6 +8,7 @@ editor_options:
 ---
 
 ```{r setup, include=FALSE}
+library(plyr)
 library(tidyverse)
 library(tidyr)
 library(ggthemes)
@@ -17,16 +18,26 @@ knitr::opts_chunk$set(echo = TRUE)
 
 #Reading in the data from the raw csv files
 ```{r data_read_in}
-#Raw data files read in individualy
-files <- list.files(path="Dry_Creek/Cap rod/Raw_data",full.names = T,pattern = "*.CSV")%>%
-  lapply(read.csv)
-#Merging all CSV files into one large matrix
-mergefiles <- rbind(files)
+#Raw data files read in individualy and then merged as read in by 'ldply'
+CR_files <- list.files(path="Dry_Creek/Cap rod/Raw_data",full.names = T,pattern = "*.CSV")%>%
+  ldply(read.csv)%>%
+#changing datetime from numeric to date format (m
+  mutate(datetime2=mdy_hms(as.character(datetime),truncated=2))
+  
 
-?rbind
+CR_files %>%
+  filter(is.na(datetime2))%>%
+  mutate(datetime2=mdy_hms(as.character(datetime)))
+?mdy_hms
+?strptime
+#to chek the headers of the data frame and type of data format   
+#str(CR_files)
+  
 ```
-
-```{r}
+#Plotting the data
+```{r plot}
+ggplot(CR_files, aes(x=datetime2, y=wtrhgt__3))+
+  geom_point()
 
 ```
 
