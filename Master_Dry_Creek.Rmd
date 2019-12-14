@@ -1,0 +1,317 @@
+---
+title: "Master-Dry Creek"
+author: "Bryce Pulver"
+date: "12/10/2019"
+output: 
+  html_document:
+    toc: true
+    toc_float: true
+
+---
+# Introduction/Background
+
+The scope of this code is to provide a more robust and iterative way to read in raw data files from sensors across field sites established by Stephanie Kampf’s research group. Dry Creek (located in the Poudre Canyon, CO) is used as the training site since it contains all the sensors the group uses. These sensors include; a caprod, pressure transducers, soil moisture and temperature probes, electric conductivity meters, rain gauges, HOBO loggers, and cameras (for stage height and snow depth). This code will be used by current and future students in the lab and eventually be used by people across the watershed science department.
+
+The code below contains read-ins and some plotting for the pressure transducers, electric conductivity probe, rain gauge, and cap rod sensors. I have only recently messed with the soil temp/moisture code and have included that as a preliminary and reference for how it will be read in.
+
+![](images/river.png)
+
+### Libraries
+```{r setup, message=FALSE}
+library(plyr)
+library(tidyverse)
+library(tidyr)
+library(ggthemes)
+library(lubridate)
+library(data.table)
+library(xts)
+library(dygraphs)
+library(plotly)
+library(readxl)
+library(knitr)
+library(kableExtra)
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Pressure Transducer
+
+### Reading in baro data
+
+```{r reading_baro,results='hide',warning=F, message=FALSE}
+#Raw data files read in individualy and then merged into df by 'ldply'
+#function(x) is determening how many lines of the csv to skip and then
+#reading in the file with the associated # of skips
+
+baro_files <- lapply(list.files(path="Dry_Creek/PT_data/baro",
+                                full.names = T,
+                                pattern = "*.csv"),
+                     readLines)%>%
+  ldply(function(x) {
+  linesToSkip <- grep("Date and Time,Seconds", x)-1
+  read.csv(text = x, skip = linesToSkip, header=T)
+  }) %>%
+  mutate(type = 'baro')%>% #creating column to keep type
+  rename(DateTime = 1, #renaming columns
+         Pressure_PSI = 3,
+         Pressure_mBar = 6)
+
+```
+
+### Reading in stream data
+
+```{r reading_stream,,results='hide',warning=F, message=FALSE}
+#Raw data files read in individualy and then merged into df by 'ldply'
+#function(x) is determening how many lines of the csv to skip and then
+#reading in the file with the associated # of skips
+
+stream_files <- lapply(list.files(path="Dry_Creek/PT_data/stream",
+                                  full.names = T,
+                                  pattern = "*.csv"),
+                       readLines)%>%
+  ldply(function(x) {
+  linesToSkip <- grep("Date and Time,Seconds", x)-1
+  read.csv(text = x, skip = linesToSkip, header=T)
+  }) %>%
+  mutate(type = 'stream')%>% #creating column to keep type
+  rename(DateTime = 1, #renaming columns
+         Pressure_PSI = 3)
+  
+```
+
+### Pressure Conversion of the baro data from mBar to PSI
+
+```{r pressure_conversion}
+#if there is an NA in the PSI column this will change
+#take the mBar measurement and convert it to PSI
+#number used is the value to go from mBar to PSI
+baro_data <- baro_files %>%
+  mutate(Pressure_PSI = ifelse(is.na(Pressure_PSI),
+                               Pressure_mBar * 0.0145038, Pressure_PSI))
+```
+
+### Joining the data and converting to cm_H2O
+
+```{r Join_data,,results='hide',warning=F}
+#joining the stream and baro data
+#and taking the difference to convert to cm_H20
+joined_data <- inner_join(baro_data, stream_files, by = "DateTime")%>%
+  mutate(Pressure_cm = (Pressure_PSI.y-Pressure_PSI.x)*70.307,
+         DateTime = mdy_hms(as.character(DateTime)))%>%
+  select(DateTime, Pressure_cm)
+
+#creating an xts format to use with dygraphs  
+xts_data <- xts(joined_data, order.by = joined_data$DateTime)
+
+```
+## Plot of unprocessed xts data
+```{r , echo = F}
+
+dygraph(xts_data)
+```
+
+
+### Reading in DAT files
+
+```{r reading_Dat,results='hide',warning=F, message=FALSE}
+#########This first section of code was used to create a function for one of the salt slug files.
+
+# discharge1 <- read_csv("Dry_Creek/Discharge/Salt Slug_raw_data/DAT_files/2017_07_05_SaltSlug_Dry_Creek.dat",col_names=F)%>%
+#   select(value = 2,
+#          key = 3)%>%
+#   mutate(id = rep(1:(nrow(.)/3),each=3))%>% #this is creating a group of three to read in uS and mS values
+#   pivot_wider(values_from = value, names_from = key) %>%
+#   mutate(uS = ifelse(is.na(uS),
+#                                mS * 1000, uS),
+#           time_from_inj = (id-1)*2,
+#          bck_corr_cond = ifelse(uS>=130.5,
+#                                 uS-130.5, 0),
+#          bck_corr_conc = bck_corr_cond/2,
+#          conc_dt = ((lag(bck_corr_conc)+bck_corr_conc)/2)*(2),
+#          conc_dt = ifelse(is.na(conc_dt),
+#                           0, conc_dt))
+# 
+# final_discharge <- (200/(sum(discharge1$conc_dt)/1000))*0.0353146667
+
+#function to read in .dat files and get discharge values
+discharger <- function(x, bck_cond, slug_mass) {
+  discharge <- read_csv(x,col_names=F)%>%
+  select(value = X2,
+         key = X3) %>%
+  mutate(id = rep(1:(nrow(.)/3),each=3))%>% #this is creating a group of three to read in uS and mS values
+  pivot_wider(values_from = value, names_from = key) %>%
+  mutate(uS = ifelse(is.na(uS),
+                               mS * 1000, uS),
+          time_from_inj = (id-1)*2,
+         bck_corr_cond = ifelse(uS>=bck_cond,
+                                uS-bck_cond, 0),
+         bck_corr_conc = bck_corr_cond/2,
+         conc_dt = ((lag(bck_corr_conc)+bck_corr_conc)/2)*(2),
+         conc_dt = ifelse(is.na(conc_dt),
+                          0, conc_dt))
+
+final_discharge <- (slug_mass/(sum(discharge$conc_dt)/1000))*0.0353146667
+
+return(final_discharge)
+}
+```
+
+### Creating Rating Curve
+```{r Creating_Rating_curve,results='hide',warning=F, message=FALSE}
+
+salt_slug <- tibble(list.files(path = "Dry_Creek/Discharge/Salt Slug_raw_data/DAT_files",
+                               full.names = F,
+                               pattern = "*.dat"))
+
+
+salt_slug_read <- list.files(path = "Dry_Creek/Discharge/Salt Slug_raw_data/DAT_files",
+                               full.names = T,
+                               pattern = "*.dat")
+
+slug_mass <- c(205,202,200,200)
+ 
+bck_cond <- c(130.5,145.5,149.5,132.7)
+
+init_cond <- cbind(salt_slug_read,bck_cond,slug_mass)
+
+discharger(salt_slug_read[1],bck_cond[1],slug_mass[1])
+
+discharge_values <- pmap(list(
+  x = salt_slug_read,
+  bck_cond = bck_cond,
+  slug_mass = slug_mass),discharger)
+#creating data frame to merge and plot with manual stage values
+discharge_df <- data.frame(matrix(unlist(discharge_values),
+                                  nrow = 4,
+                                  byrow = T))%>%
+  rename(discharge = 1)
+#change values according to manual stage reading and ensure the values line up with the correct files  
+manual_stage <- c(8.5,8.5,8,8)
+
+rating_curve <- cbind(manual_stage, discharge_df)
+
+fit = lm(rating_curve$discharge~rating_curve$manual_stage, data = rating_curve)
+fit
+
+
+```
+### Plot of Rating Curve
+There are two files that need to located in order to create a better Rating Curve
+```{r, echo=F}
+
+ggplot(rating_curve, aes(manual_stage, discharge))+
+  geom_point(color='blue') +
+  geom_smooth(method = "lm", se = FALSE, color = "red")+
+  ggtitle("Rating Curve")+
+  xlab("Manual Stage (Cm)")+
+  ylab("Discharge (cfs)")+
+  theme_calc()
+  
+```
+
+### Work to be done:
+clean jumps in data and apply rating curve to get disharge. The rating curve lm has a list of coefficients that will be called in by a corrected state data frame to create a final graph
+
+# Rain Guage
+
+```{r,results='hide',warning=F, message=FALSE}
+#Raw data files read in individualy and then merged as read in by 'map_dfr'
+RG_files <- list.files(path="Dry_Creek/Rain_gage/csv",pattern = "*.csv", full.names=TRUE) 
+RG_read <-  map_dfr(RG_files,read_csv,skip=1)%>%
+  rename(date_time = 2,
+         event = 4,
+         coupler_detached = 5)%>%
+  select(date_time,
+         event,
+         coupler_detached)%>%
+  mutate(precip = (event+1)*0.2,
+         test = map(precip,sum))
+
+#This is creating a datetime column to posixct class
+RG_data <- RG_read%>%
+    mutate(date_time = as.POSIXct(RG_read$date_time, 
+                               format = "%m/%d/%y %I:%M:%S %p"))
+
+#object that has all of the logged events to further filter
+RG_logged <- RG_data %>%
+  filter(!is.na(coupler_detached))
+```
+
+### Rain Guage Plot
+```{r,echo=F}
+p1 <- ggplot() +
+  geom_step(RG_data, mapping = aes(x = date_time, y = precip), size = 0.5) +
+  # geom_step(RG_data,    
+  #           mapping = aes(x = date_time, y = precip),
+  #           direction = "vh",
+  #           linetype = 3) +
+  #geom_point(RG_data, mapping = aes(x = date_time, y = precip), color="red") +
+  theme_calc() +
+  xlab("Date") +
+  ylab("Precipitation (mm)") +
+  ggtitle("Rain Guage-Dry Creek")
+ggplotly(p1)
+```
+
+### Work to be done:
+create time interval to remove events before and after logged event
+create a summary table for the station (events and sum of precip)
+
+# Cap Rop
+
+### Reading in the data from the raw csv files
+```{r data_read_in,results='hide',warning=F, message=FALSE}
+#Raw data file path names are read in to a tibble
+CR_files <- tibble(file_path = list.files(path="Dry_Creek/Cap rod/Raw_data",
+                                          full.names = T,
+                                          pattern = "*.CSV"))%>%
+  rowid_to_column(var = "id")%>% #file id
+    mutate(df = map(file_path, read_csv), #reads in each file that is then nested
+           file_name = list.files(path="Dry_Creek/Cap rod/Raw_data",#creating file name column
+                                  full.names = F,
+                                  pattern = "*.CSV"))%>%
+  unnest(df)%>% #unnesting
+#changing datetime from numeric to date format
+  mutate(datetime=mdy_hms(as.character(datetime),truncated=2))
+```
+
+## Plotting the data
+```{r plot, echo=F}
+ggplotly(ggplot(CR_files, aes(x= datetime, y= wtrhgt__3, color = file_name))+
+  geom_line(show.legend = FALSE)+
+  xlab('Date')+
+  ylab('Water Height Avg. (mm)')+
+  ggtitle("Cap Rod-Dry Creek")+
+    # scale_colour_tableau()+
+    theme_calc()+
+    theme(legend.position='none'))
+
+```
+
+# Soil Moisture and Temperature
+```{r,results='hide',warning=F, message=FALSE}
+#Creating nested data fram to map across all of the xls files
+soil_data <- tibble(file_path = list.files(path="Dry_Creek/Soil_moisture",
+                                           pattern = "*.xls",
+                                           full.names=TRUE))%>%
+  mutate(df = map(file_path,read_excel,skip = 1),
+         file_name = list.files(path="Dry_Creek/Soil_moisture",
+                                pattern = "*.xls",
+                                full.names=F))%>%
+  unnest(df)%>%
+    mutate_at(vars(matches("records")), as.character) %>% #This merges all of the records columns into 1
+    mutate(date_value = coalesce(!!! select(., matches("records"))))
+```
+```{r,echo=F}
+kable(soil_data[1:10, 1:24]) %>%
+  kable_styling(fixed_thead = T)%>%
+  scroll_box(width = "100%", height = "200px")
+```
+### Work to be done
+This data frame needs to be cleaned and summarized. Then a plot of the different depths will be made.
+
+# Next Steps
+
+Once the code is established a clean summary set of code will be applied to each field site. The goal is to have each of the summary pages be linked to the research group’s website using blog down and having interactive plots/tables that allow people to look at our field data. This would be tabbed and have the git hub page linked to the sensor source code and have a hydroshare link to where all the data can be found. 
+The idea would also have a task set up to rerun the code every month to append any new data that is collected.
+
+
